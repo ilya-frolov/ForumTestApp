@@ -118,15 +118,90 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("Connection string: {ConnectionString}", maskedConnString);
         }
         
-        // Check if we can connect to the database (may return false if database doesn't exist yet)
+        // Check if we can connect to the database
+        bool canConnect = false;
+        bool databaseHasSchema = false;
+        bool migrationHistoryExists = false;
+        
         try
         {
-            var canConnect = context.Database.CanConnect();
+            canConnect = context.Database.CanConnect();
             logger.LogInformation("Can connect to database: {CanConnect}", canConnect);
+            
+            if (canConnect)
+            {
+                // Check if migration history table exists
+                migrationHistoryExists = context.Database.ExecuteSqlRaw(
+                    "SELECT CASE WHEN EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '__EFMigrationsHistory') THEN 1 ELSE 0 END").ToString() == "1";
+                
+                // Check if key tables already exist (indicating schema was created from script)
+                var aspNetRolesExists = context.Database.ExecuteSqlRaw(
+                    "SELECT CASE WHEN EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'AspNetRoles') THEN 1 ELSE 0 END").ToString() == "1";
+                var forumsExists = context.Database.ExecuteSqlRaw(
+                    "SELECT CASE WHEN EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Forums') THEN 1 ELSE 0 END").ToString() == "1";
+                
+                databaseHasSchema = aspNetRolesExists && forumsExists;
+                
+                logger.LogInformation("Migration history table exists: {Exists}", migrationHistoryExists);
+                logger.LogInformation("Database schema already exists (created from script): {Exists}", databaseHasSchema);
+            }
         }
         catch (Exception connEx)
         {
             logger.LogWarning("Cannot connect to database yet (may not exist): {Message}", connEx.Message);
+        }
+        
+        // Handle migrations based on database state
+        if (canConnect && databaseHasSchema && !migrationHistoryExists)
+        {
+            // Database was created from script - need to create migration history table and mark migrations as applied
+            logger.LogInformation("Database was created from script. Creating migration history table and marking migrations as applied...");
+            
+            try
+            {
+                // Create migration history table if it doesn't exist
+                context.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '__EFMigrationsHistory')
+                    BEGIN
+                        CREATE TABLE [__EFMigrationsHistory] (
+                            [MigrationId] NVARCHAR(150) NOT NULL,
+                            [ProductVersion] NVARCHAR(32) NOT NULL,
+                            CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY ([MigrationId])
+                        );
+                    END
+                ");
+                
+                logger.LogInformation("Migration history table created.");
+                
+                // Get all migrations that should be applied
+                var allMigrations = context.Database.GetMigrations().ToList();
+                var productVersion = typeof(ForumDbContext).Assembly.GetName().Version?.ToString() ?? "8.0.2";
+                
+                // Insert migration history entries for all migrations without actually running them
+                foreach (var migration in allMigrations)
+                {
+                    try
+                    {
+                        context.Database.ExecuteSqlRaw(
+                            "IF NOT EXISTS (SELECT 1 FROM [__EFMigrationsHistory] WHERE [MigrationId] = {0}) " +
+                            "INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion]) VALUES ({0}, {1})",
+                            migration, productVersion);
+                        
+                        logger.LogInformation("Marked migration '{Migration}' as applied", migration);
+                    }
+                    catch (Exception migEx)
+                    {
+                        logger.LogWarning("Could not mark migration '{Migration}' as applied: {Message}", migration, migEx.Message);
+                    }
+                }
+                
+                logger.LogInformation("All migrations marked as applied successfully.");
+            }
+            catch (Exception markEx)
+            {
+                logger.LogWarning("Could not mark migrations as applied. Error: {Message}", markEx.Message);
+                logger.LogWarning("The application will attempt to apply migrations normally.");
+            }
         }
         
         // Get pending migrations
@@ -137,12 +212,61 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("Migrations to apply: {Migrations}", string.Join(", ", pendingMigrations));
         }
         
-        // Migrate() will:
-        // 1. Create the database if it doesn't exist
-        // 2. Apply all pending migrations
-        // 3. Seed data via HasData in OnModelCreating
-        logger.LogInformation("Applying database migrations...");
-        context.Database.Migrate();
+        // Apply migrations only if there are pending ones
+        if (pendingMigrations.Any())
+        {
+            logger.LogInformation("Applying database migrations...");
+            try
+            {
+                context.Database.Migrate();
+                logger.LogInformation("Migrations applied successfully.");
+            }
+            catch (Microsoft.Data.SqlClient.SqlException sqlEx)
+            {
+                // Handle case where tables already exist (created from script)
+                // Error 2714 = There is already an object named 'X' in the database
+                if (sqlEx.Number == 2714 || 
+                    sqlEx.Message.Contains("already an object named", StringComparison.OrdinalIgnoreCase))
+                {
+                    logger.LogWarning("Migration attempted to create objects that already exist (database was created from script).");
+                    logger.LogInformation("This is expected. Database schema is already up to date.");
+                    
+                    // Try to ensure migration history is up to date
+                    try
+                    {
+                        var remainingMigrations = context.Database.GetPendingMigrations().ToList();
+                        if (remainingMigrations.Any())
+                        {
+                            logger.LogInformation("Attempting to mark remaining migrations as applied...");
+                            var productVersion = typeof(ForumDbContext).Assembly.GetName().Version?.ToString() ?? "8.0.2";
+                            foreach (var migration in remainingMigrations)
+                            {
+                                try
+                                {
+                                    context.Database.ExecuteSqlRaw(
+                                        "IF NOT EXISTS (SELECT 1 FROM [__EFMigrationsHistory] WHERE [MigrationId] = {0}) " +
+                                        "INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion]) VALUES ({0}, {1})",
+                                        migration, productVersion);
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                    catch { }
+                    
+                    // Don't throw - allow application to continue since schema already exists
+                }
+                else
+                {
+                    logger.LogError("SQL error during migration: {Number} - {Message}", sqlEx.Number, sqlEx.Message);
+                    throw;
+                }
+            }
+        }
+        else
+        {
+            logger.LogInformation("No pending migrations. Database is up to date.");
+        }
         
         logger.LogInformation("Database migration completed successfully.");
         

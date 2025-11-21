@@ -217,7 +217,64 @@ If you prefer to create the database manually using SQL scripts, you can use the
      - Insert seed data (3 forums)
      - Set up all relationships and indexes
 
-3. **Update connection string** based on your environment to point to your database:
+3. **Grant database access to the user from connection string**:
+   
+   After creating the database from the script, you need to grant the user (specified in your connection string) access to the database:
+   
+   **Important:** Run these SQL commands in SQL Server Management Studio as a database administrator:
+   
+   ```sql
+   -- If using SQL Server authentication (User Id and Password in connection string)
+   -- First, ensure the login exists (if not already created)
+   USE [master];
+   GO
+   IF NOT EXISTS (SELECT * FROM sys.sql_logins WHERE name = 'YOUR_USER')
+   BEGIN
+       CREATE LOGIN [YOUR_USER] WITH PASSWORD = 'YOUR_PASSWORD';
+   END
+   GO
+   
+   -- Grant access to the database
+   USE [ForumAppDb];
+   GO
+   
+   -- Create user mapping if it doesn't exist
+   IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = 'YOUR_USER')
+   BEGIN
+       CREATE USER [YOUR_USER] FOR LOGIN [YOUR_USER];
+   END
+   GO
+   
+   -- Grant necessary permissions (db_owner role for full access)
+   ALTER ROLE [db_owner] ADD MEMBER [YOUR_USER];
+   GO
+   ```
+   
+   **Replace `YOUR_USER` with the actual username from your connection string.**
+   
+   **Alternative:** If you prefer minimal permissions instead of `db_owner`:
+   ```sql
+   USE [ForumAppDb];
+   GO
+   CREATE USER [YOUR_USER] FOR LOGIN [YOUR_USER];
+   GO
+   ALTER ROLE [db_datareader] ADD MEMBER [YOUR_USER];
+   ALTER ROLE [db_datawriter] ADD MEMBER [YOUR_USER];
+   ALTER ROLE [db_ddladmin] ADD MEMBER [YOUR_USER];
+   GO
+   ```
+   
+   **For Windows Authentication (Trusted_Connection=True):**
+   ```sql
+   USE [ForumAppDb];
+   GO
+   CREATE USER [DOMAIN\Username] FROM LOGIN [DOMAIN\Username];
+   GO
+   ALTER ROLE [db_owner] ADD MEMBER [DOMAIN\Username];
+   GO
+   ```
+
+4. **Update connection string** based on your environment to point to your database:
    
    **For Development** (`appsettings.Development.json`):
    ```json
@@ -237,11 +294,14 @@ If you prefer to create the database manually using SQL scripts, you can use the
    }
    ```
 
-4. **Run the application** - The application will:
+5. **Run the application** - The application will:
    - Automatically detect the environment and load the appropriate configuration file
-   - EF Core will detect that migrations are already applied and will not try to recreate the database
+   - EF Core will detect that the database schema already exists and mark migrations as applied
+   - The application will start successfully
 
-**Note:** When using the manual script, make sure the database schema matches what EF Core expects. The script includes all necessary tables and seed data.
+**Note:** 
+- When using the manual script, make sure the database schema matches what EF Core expects. The script includes all necessary tables and seed data.
+- **Important:** The user from your connection string must have database access granted as shown in step 3. Without proper permissions, the application will fail to connect to the database.
 
 ### Database Initialization Details
 
@@ -400,7 +460,7 @@ The application implements in-memory caching for the first posts endpoint:
 - **Repository Pattern** - Data access abstraction via DbManagers (IForumsDB, IPostsDB, ICommentsDB)
 - **Dependency Injection** - All services registered in Program.cs
 - **DTO Pattern** - Entity-to-DTO mapping via DtoMapper utility
-- **Soft Delete** - Posts and Comments have `IsDeleted` flag (not physically deleted)
+- **Hard Delete** - Comments are physically removed from database when deleted (no soft delete)
 
 ### Data Flow
 
@@ -490,6 +550,10 @@ API Controller → Manager → DbManager → DbContext → Database
 - Check user credentials (username/password)
 - Ensure SQL Server allows remote connections
 - Check firewall settings
+- **If database was created from script:** Ensure the user from connection string has been granted access to the database:
+  - Run: `CREATE USER [username] FOR LOGIN [username];`
+  - Run: `ALTER ROLE [db_owner] ADD MEMBER [username];` (or grant `db_datareader`, `db_datawriter`, `db_ddladmin` roles)
+  - See "Option 3: Using Manual SQL Script" section for detailed instructions
 
 ### Migration Errors
 
