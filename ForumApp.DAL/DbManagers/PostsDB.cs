@@ -18,20 +18,20 @@ namespace ForumApp.DAL.DbManagers
         public async Task<List<Post>> GetPostsByForumIdAsync(int forumId, int skip = 0, int take = 10)
         {
             return await _context.Posts
-                .Where(p => p.ForumId == forumId && !p.IsDeleted)
+                .Where(p => p.ForumId == forumId)
                 .OrderByDescending(p => p.CreatedAt)
                 .Skip(skip)
                 .Take(take)
-                .Include(p => p.Comments.Where(c => !c.IsDeleted))
+                .Include(p => p.Comments)
                 .ToListAsync();
         }
 
         public async Task<Post?> GetPostByIdAsync(int id)
         {
             return await _context.Posts
-                .Include(p => p.Comments.Where(c => !c.IsDeleted))
+                .Include(p => p.Comments)
                 .Include(p => p.Forum)
-                .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted);
+                .FirstOrDefaultAsync(p => p.Id == id);
         }
 
         public async Task<Post> CreatePostAsync(Post post)
@@ -53,7 +53,6 @@ namespace ForumApp.DAL.DbManagers
         public async Task<List<Post>> GetFirstPostsAsync(int count = 10)
         {
             return await _context.Posts
-                .Where(p => !p.IsDeleted)
                 .OrderByDescending(p => p.CreatedAt)
                 .Take(count)
                 .Include(p => p.Forum)

@@ -146,7 +146,12 @@ namespace ForumApp.ApiControllers
             // Enforce requirement: only the post creator can delete comments
             if (post.CreatedByUserId != userId)
             {
-                return Forbid("Only the post creator can delete comments");
+                return StatusCode(403, new ErrorResponseDto
+                {
+                    Code = 403,
+                    Error = "FORBIDDEN",
+                    Details = new[] { "Only the post creator can delete comments" }
+                });
             }
 
             await _commentManager.DeleteCommentAsync(id, userId);

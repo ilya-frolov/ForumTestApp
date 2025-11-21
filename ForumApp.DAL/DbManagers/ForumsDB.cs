@@ -18,14 +18,14 @@ namespace ForumApp.DAL.DbManagers
         public async Task<List<Forum>> GetAllForumsAsync()
         {
             return await _context.Forums
-                .Include(f => f.Posts.Where(p => !p.IsDeleted))
+                .Include(f => f.Posts)
                 .ToListAsync();
         }
 
         public async Task<Forum?> GetForumByIdAsync(int id)
         {
             return await _context.Forums
-                .Include(f => f.Posts.Where(p => !p.IsDeleted))
+                .Include(f => f.Posts)
                 .FirstOrDefaultAsync(f => f.Id == id);
         }
 

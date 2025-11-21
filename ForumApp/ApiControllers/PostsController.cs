@@ -161,7 +161,12 @@ namespace ForumApp.ApiControllers
 
             if (post.CreatedByUserId != userId)
             {
-                return Forbid();
+                return StatusCode(403, new ErrorResponseDto
+                {
+                    Code = 403,
+                    Error = "FORBIDDEN",
+                    Details = new[] { "Only the post owner can update posts" }
+                });
             }
 
             post.Title = dto.Title;

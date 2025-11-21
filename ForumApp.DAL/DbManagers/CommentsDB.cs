@@ -18,7 +18,7 @@ namespace ForumApp.DAL.DbManagers
         public async Task<List<Comment>> GetCommentsByPostIdAsync(int postId)
         {
             return await _context.Comments
-                .Where(c => c.PostId == postId && !c.IsDeleted)
+                .Where(c => c.PostId == postId)
                 .OrderBy(c => c.CreatedAt)
                 .ToListAsync();
         }
@@ -27,7 +27,7 @@ namespace ForumApp.DAL.DbManagers
         {
             return await _context.Comments
                 .Include(c => c.Post)
-                .FirstOrDefaultAsync(c => c.Id == id && !c.IsDeleted);
+                .FirstOrDefaultAsync(c => c.Id == id);
         }
 
         public async Task<Comment> CreateCommentAsync(Comment comment)
@@ -44,7 +44,6 @@ namespace ForumApp.DAL.DbManagers
             if (comment == null)
                 return false;
 
-            comment.IsDeleted = true;
             _context.Comments.Remove(comment);
             await _context.SaveChangesAsync();
 
@@ -55,7 +54,7 @@ namespace ForumApp.DAL.DbManagers
         {
             var comment = await _context.Comments.FindAsync(commentId);
 
-            return comment != null && !comment.IsDeleted && comment.CreatedByUserId == userId;
+            return comment != null && comment.CreatedByUserId == userId;
         }
     }
 }

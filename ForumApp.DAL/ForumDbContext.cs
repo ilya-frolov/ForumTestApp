@@ -53,7 +53,6 @@ namespace ForumApp.DAL
                 entity.Property(e => e.CreatedByUserId).IsRequired().HasMaxLength(450);
                 entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
                 entity.Property(e => e.UpdatedAt);
-                entity.Property(e => e.IsDeleted).HasDefaultValue(false);
 
                 entity.HasOne(e => e.Forum)
                     .WithMany(f => f.Posts)
@@ -72,7 +71,6 @@ namespace ForumApp.DAL
                 entity.Property(e => e.CreatedByUserId).IsRequired().HasMaxLength(450);
                 entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
                 entity.Property(e => e.UpdatedAt);
-                entity.Property(e => e.IsDeleted).HasDefaultValue(false);
 
                 entity.HasOne(e => e.Post)
                     .WithMany(p => p.Comments)

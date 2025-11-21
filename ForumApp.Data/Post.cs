@@ -26,8 +26,6 @@ namespace ForumApp.Data
         [MaxLength(450)]
         public string CreatedByUserId { get; set; } = string.Empty;
 
-        public bool IsDeleted { get; set; } = false;
-
         public DateTime CreatedAt { get; set; }
 
         public DateTime? UpdatedAt { get; set; }
