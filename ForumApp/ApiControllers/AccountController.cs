@@ -107,7 +107,7 @@ namespace ForumApp.ApiControllers
         }
 
         /// <summary>
-        /// Logd in s user
+        /// Logs in a user
         /// </summary>
         /// <param name="model">Login details (email, password, rememberMe).</param>
         [HttpPost("login")]

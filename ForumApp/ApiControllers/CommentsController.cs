@@ -8,7 +8,7 @@ using System.Security.Claims;
 
 namespace ForumApp.ApiControllers
 {
-    // <summary>
+    /// <summary>
     /// API controller for Comment operations.
     /// Provides endpoints to view, create, and delete comments.
     /// </summary>
@@ -29,7 +29,7 @@ namespace ForumApp.ApiControllers
         /// <summary>
         /// Gets all comments for a post
         /// </summary>
-        /// <param name="postId">Post ID to retrieve comments for.</param>
+        /// <param name="postId">Post ID to retrieve comments for it.</param>
         [HttpGet("post/{postId}")]
         [AllowAnonymous]
         public async Task<ActionResult<List<CommentDto>>> GetAllByPostId(int postId)
